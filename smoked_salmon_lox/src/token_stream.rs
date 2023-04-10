@@ -391,4 +391,80 @@ mod tests {
         );
         assert_eq!(token_stream.read_token(), Some(Ok(Token::RightBrace)));
     }
+
+    #[test]
+    fn test_class() {
+        let program = "class Brunch < Breakfast {\n
+                         init(meat, bread, drink) {\n
+                           super.init(meat, bread);\n
+                           this.drink = drink;\n
+                         }\n
+                       }";
+        let mut token_stream = TokenStream::new(program);
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Class)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("Brunch".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Less)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("Breakfast".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftBrace)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("init".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftParen)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("meat".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Comma)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("bread".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Comma)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("drink".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightParen)));
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftBrace)));
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Super)));
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Dot)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("init".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftParen)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("meat".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Comma)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("bread".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightParen)));
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Semicolon)));
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::This)));
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Dot)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("drink".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Equal)));
+        assert_eq!(
+            token_stream.read_token(),
+            Some(Ok(Token::Identifier("drink".to_owned())))
+        );
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::Semicolon)));
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightBrace)));
+        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightBrace)));
+        end(&mut token_stream);
+    }
 }
