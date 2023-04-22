@@ -1,0 +1,5 @@
+[workspace]
+
+members = [
+  "smoked_salmon_lox"
+]
