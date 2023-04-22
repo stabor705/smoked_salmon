@@ -5,12 +5,10 @@ use std::iter::Peekable;
 use std::str::Chars;
 
 use lazy_static::lazy_static;
-use strum_macros::AsRefStr;
+use strum_macros::{AsRefStr, EnumCount};
 
-type Number = f64;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Token {
+#[derive(Clone, Debug, PartialEq, EnumCount)]
+pub enum TokenKind {
     // Single character tokens
     LeftParen,
     RightParen,
@@ -35,9 +33,9 @@ pub enum Token {
     LessEqual,
 
     // Literals
-    Identifier(String),
-    StringLiteral(String),
-    NumberLiteral(Number),
+    Identifier,
+    StringLiteral,
+    NumberLiteral,
 
     // Keywords
     And,
@@ -60,25 +58,53 @@ pub enum Token {
     Eof,
 }
 
+type Number = f64;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TokenData {
+    String(String),
+    Number(Number),
+    None,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Token {
+    kind: TokenKind,
+    data: TokenData,
+}
+
+impl Token {
+    pub fn new(kind: TokenKind, data: TokenData) -> Token {
+        Token { kind, data }
+    }
+
+    pub fn simple(kind: TokenKind) -> Token {
+        Token {
+            kind,
+            data: TokenData::None,
+        }
+    }
+}
+
 lazy_static! {
     static ref KEYWORDS: HashMap<&'static str, Token> = {
         let mut m = HashMap::new();
-        m.insert("and", Token::And);
-        m.insert("class", Token::Class);
-        m.insert("else", Token::Else);
-        m.insert("false", Token::False);
-        m.insert("for", Token::For);
-        m.insert("fun", Token::Fun);
-        m.insert("if", Token::If);
-        m.insert("nil", Token::Nil);
-        m.insert("or", Token::Or);
-        m.insert("print", Token::Print);
-        m.insert("return", Token::Return);
-        m.insert("super", Token::Super);
-        m.insert("this", Token::This);
-        m.insert("true", Token::True);
-        m.insert("var", Token::Var);
-        m.insert("while", Token::While);
+        m.insert("and", Token::simple(TokenKind::And));
+        m.insert("class", Token::simple(TokenKind::Class));
+        m.insert("else", Token::simple(TokenKind::Else));
+        m.insert("false", Token::simple(TokenKind::False));
+        m.insert("for", Token::simple(TokenKind::For));
+        m.insert("fun", Token::simple(TokenKind::Fun));
+        m.insert("if", Token::simple(TokenKind::If));
+        m.insert("nil", Token::simple(TokenKind::Nil));
+        m.insert("or", Token::simple(TokenKind::Or));
+        m.insert("print", Token::simple(TokenKind::Print));
+        m.insert("return", Token::simple(TokenKind::Return));
+        m.insert("super", Token::simple(TokenKind::Super));
+        m.insert("this", Token::simple(TokenKind::This));
+        m.insert("true", Token::simple(TokenKind::True));
+        m.insert("var", Token::simple(TokenKind::Var));
+        m.insert("while", Token::simple(TokenKind::While));
         m
     };
 }
@@ -135,47 +161,47 @@ impl<'a> TokenStream<'a> {
         let c = self.advance()?;
 
         match c {
-            '(' => Some(Ok(Token::LeftParen)),
-            ')' => Some(Ok(Token::RightParen)),
-            '{' => Some(Ok(Token::LeftBrace)),
-            '}' => Some(Ok(Token::RightBrace)),
-            ',' => Some(Ok(Token::Comma)),
-            '.' => Some(Ok(Token::Dot)),
-            '-' => Some(Ok(Token::Minus)),
-            '+' => Some(Ok(Token::Plus)),
-            ';' => Some(Ok(Token::Semicolon)),
-            '*' => Some(Ok(Token::Star)),
+            '(' => Self::wrap(TokenKind::LeftParen),
+            ')' => Self::wrap(TokenKind::RightParen),
+            '{' => Self::wrap(TokenKind::LeftBrace),
+            '}' => Self::wrap(TokenKind::RightBrace),
+            ',' => Self::wrap(TokenKind::Comma),
+            '.' => Self::wrap(TokenKind::Dot),
+            '-' => Self::wrap(TokenKind::Minus),
+            '+' => Self::wrap(TokenKind::Plus),
+            ';' => Self::wrap(TokenKind::Semicolon),
+            '*' => Self::wrap(TokenKind::Star),
 
             '!' => {
                 if self.src.peek() == Some(&'=') {
                     self.advance();
-                    Some(Ok(Token::BangEqual))
+                    Self::wrap(TokenKind::BangEqual)
                 } else {
-                    Some(Ok(Token::Bang))
+                    Self::wrap(TokenKind::Bang)
                 }
             }
             '=' => {
                 if self.src.peek() == Some(&'=') {
                     self.advance();
-                    Some(Ok(Token::EqualEqual))
+                    Self::wrap(TokenKind::EqualEqual)
                 } else {
-                    Some(Ok(Token::Equal))
+                    Self::wrap(TokenKind::Equal)
                 }
             }
             '<' => {
                 if self.src.peek() == Some(&'=') {
                     self.advance();
-                    Some(Ok(Token::LessEqual))
+                    Self::wrap(TokenKind::LessEqual)
                 } else {
-                    Some(Ok(Token::Less))
+                    Self::wrap(TokenKind::Less)
                 }
             }
             '>' => {
                 if self.src.peek() == Some(&'=') {
                     self.advance();
-                    Some(Ok(Token::GreaterEqual))
+                    Self::wrap(TokenKind::GreaterEqual)
                 } else {
-                    Some(Ok(Token::Greater))
+                    Self::wrap(TokenKind::Greater)
                 }
             }
             '/' => {
@@ -184,24 +210,27 @@ impl<'a> TokenStream<'a> {
                     while next != Some('\n') {
                         next = self.advance();
                     }
-                    self.next()
+                    self.read_token()
                 } else {
-                    Some(Ok(Token::Slash))
+                    Self::wrap(TokenKind::Slash)
                 }
             }
-            ' ' | '\r' | '\t' => self.next(),
+            ' ' | '\r' | '\t' => self.read_token(),
             '\n' => {
                 self.line += 1;
                 self.col = 0;
-                self.next()
+                self.read_token()
             }
             '"' => Some(
                 self.read_string_literal()
-                    .map(|string| Token::StringLiteral(string)),
+                    .map(|string| Token::new(TokenKind::StringLiteral, TokenData::String(string))),
             ),
             _ => {
                 if c.is_ascii_digit() {
-                    Some(Ok(Token::NumberLiteral(self.read_number(c))))
+                    Some(Ok(Token::new(
+                        TokenKind::NumberLiteral,
+                        TokenData::Number(self.read_number(c)),
+                    )))
                 } else if c.is_alphabetic() {
                     Some(Ok(self.read_identifier(c)))
                 } else {
@@ -213,6 +242,10 @@ impl<'a> TokenStream<'a> {
                 }
             }
         }
+    }
+
+    fn wrap(kind: TokenKind) -> Option<Result<Token>> {
+        Some(Ok(Token::new(kind, TokenData::None)))
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -279,7 +312,7 @@ impl<'a> TokenStream<'a> {
         }
         match KEYWORDS.get(identifier.as_str()) {
             Some(token) => token.clone(),
-            None => Token::Identifier(identifier),
+            None => Token::new(TokenKind::Identifier, TokenData::String(identifier)),
         }
     }
 }
@@ -296,6 +329,16 @@ impl<'a> Iterator for TokenStream<'a> {
 mod tests {
     use super::*;
 
+    trait UnwrappingTokenStream {
+        fn yank_token(&mut self) -> Token;
+    }
+
+    impl<'a> UnwrappingTokenStream for TokenStream<'a> {
+        fn yank_token(&mut self) -> Token {
+            self.read_token().unwrap().unwrap()
+        }
+    }
+
     fn end(token_stream: &mut TokenStream) {
         assert_eq!(token_stream.read_token(), None);
     }
@@ -305,8 +348,8 @@ mod tests {
         let program = "1234.1234";
         let mut token_stream = TokenStream::new(program);
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::NumberLiteral(1234.1234)))
+            token_stream.yank_token(),
+            Token::new(TokenKind::NumberLiteral, TokenData::Number(1234.1234))
         );
         end(&mut token_stream)
     }
@@ -317,8 +360,11 @@ mod tests {
         let program = format!("\"{}\"", string);
         let mut token_stream = TokenStream::new(&program);
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::StringLiteral(string.to_owned())))
+            token_stream.yank_token(),
+            Token::new(
+                TokenKind::StringLiteral,
+                TokenData::String(string.to_owned())
+            )
         );
         end(&mut token_stream)
     }
@@ -334,24 +380,39 @@ mod tests {
     #[test]
     fn test_function_def() {
         let mut token_stream = TokenStream::new("fun my_function(arg1, arg2) {}");
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Fun)));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Fun));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("my_function".to_owned())))
+            token_stream.yank_token(),
+            Token::new(
+                TokenKind::Identifier,
+                TokenData::String("my_function".to_owned())
+            )
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftParen)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("arg1".to_owned())))
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftParen)
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Comma)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("arg2".to_owned())))
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("arg1".to_owned()))
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightParen)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftBrace)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightBrace)));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Comma));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("arg2".to_owned()))
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightParen)
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftBrace)
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightBrace)
+        );
         end(&mut token_stream);
     }
 
@@ -363,33 +424,60 @@ mod tests {
                         print \"It doesn't work...\"\n
                       }";
         let mut token_stream = TokenStream::new(program);
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::If)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftParen)));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::If));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::NumberLiteral(2.0)))
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftParen)
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::EqualEqual)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::NumberLiteral(2.0)))
+            token_stream.yank_token(),
+            Token::new(TokenKind::NumberLiteral, TokenData::Number(2.0))
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightParen)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftBrace)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Print)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::StringLiteral("It works!".to_owned())))
+            token_stream.yank_token(),
+            Token::simple(TokenKind::EqualEqual)
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightBrace)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Else)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftBrace)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Print)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::StringLiteral("It doesn't work...".to_owned())))
+            token_stream.yank_token(),
+            Token::new(TokenKind::NumberLiteral, TokenData::Number(2.0))
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightBrace)));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightParen)
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftBrace)
+        );
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Print));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::new(
+                TokenKind::StringLiteral,
+                TokenData::String("It works!".to_owned())
+            )
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightBrace)
+        );
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Else));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftBrace)
+        );
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Print));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::new(
+                TokenKind::StringLiteral,
+                TokenData::String("It doesn't work...".to_owned())
+            )
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightBrace)
+        );
     }
 
     #[test]
@@ -401,70 +489,106 @@ mod tests {
                          }\n
                        }";
         let mut token_stream = TokenStream::new(program);
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Class)));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Class));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("Brunch".to_owned())))
+            token_stream.yank_token(),
+            Token::new(
+                TokenKind::Identifier,
+                TokenData::String("Brunch".to_owned())
+            )
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Less)));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Less));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("Breakfast".to_owned())))
+            token_stream.yank_token(),
+            Token::new(
+                TokenKind::Identifier,
+                TokenData::String("Breakfast".to_owned())
+            )
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftBrace)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("init".to_owned())))
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftBrace)
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftParen)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("meat".to_owned())))
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("init".to_owned()))
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Comma)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("bread".to_owned())))
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftParen)
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Comma)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("drink".to_owned())))
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("meat".to_owned()))
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightParen)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftBrace)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Super)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Dot)));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Comma));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("init".to_owned())))
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("bread".to_owned()))
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::LeftParen)));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Comma));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("meat".to_owned())))
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("drink".to_owned()))
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Comma)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("bread".to_owned())))
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightParen)
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightParen)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Semicolon)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::This)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Dot)));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("drink".to_owned())))
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftBrace)
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Equal)));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Super));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Dot));
         assert_eq!(
-            token_stream.read_token(),
-            Some(Ok(Token::Identifier("drink".to_owned())))
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("init".to_owned()))
         );
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::Semicolon)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightBrace)));
-        assert_eq!(token_stream.read_token(), Some(Ok(Token::RightBrace)));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::LeftParen)
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("meat".to_owned()))
+        );
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Comma));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("bread".to_owned()))
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightParen)
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::Semicolon)
+        );
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::This));
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Dot));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("drink".to_owned()))
+        );
+        assert_eq!(token_stream.yank_token(), Token::simple(TokenKind::Equal));
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::new(TokenKind::Identifier, TokenData::String("drink".to_owned()))
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::Semicolon)
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightBrace)
+        );
+        assert_eq!(
+            token_stream.yank_token(),
+            Token::simple(TokenKind::RightBrace)
+        );
         end(&mut token_stream);
     }
 }
