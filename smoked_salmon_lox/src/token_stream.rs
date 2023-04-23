@@ -7,7 +7,7 @@ use std::str::Chars;
 use lazy_static::lazy_static;
 use strum_macros::{AsRefStr, EnumCount};
 
-#[derive(Clone, Debug, PartialEq, EnumCount)]
+#[derive(Clone, Debug, PartialEq, EnumCount, AsRefStr)]
 pub enum TokenKind {
     // Single character tokens
     LeftParen,
