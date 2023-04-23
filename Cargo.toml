@@ -1,5 +1,6 @@
 [workspace]
 
 members = [
-  "smoked_salmon_lox"
+  "smoked_salmon_lox",
+  "smoked_salmon_cli"
 ]
